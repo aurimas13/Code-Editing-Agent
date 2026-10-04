@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-10-04T21:20:45.151164981Z",
-  "git_sha": "77cb518",
+  "generated_at": "2026-10-04T21:25:43.22472082Z",
+  "git_sha": "09df771",
   "suites": [
     {
       "name": "Sandbox and edit rules",
@@ -309,7 +309,7 @@
           ],
           "rounds": 2,
           "cost_usd": 0.010329999999999999,
-          "duration_ms": 3
+          "duration_ms": 2
         },
         {
           "id": "two-tools-in-one-message",
@@ -340,7 +340,7 @@
           ],
           "rounds": 4,
           "cost_usd": 0.02072,
-          "duration_ms": 4
+          "duration_ms": 2
         },
         {
           "id": "unknown-tool",
@@ -383,7 +383,7 @@
           ],
           "rounds": 2,
           "cost_usd": 0.01091,
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "id": "declined-edit-changes-nothing",
@@ -397,7 +397,7 @@
           ],
           "rounds": 2,
           "cost_usd": 0.010910000000000001,
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "id": "reads-are-not-gated-by-approval",
@@ -411,7 +411,7 @@
           ],
           "rounds": 2,
           "cost_usd": 0.009700000000000002,
-          "duration_ms": 2
+          "duration_ms": 0
         },
         {
           "id": "model-attempts-traversal",
@@ -425,7 +425,7 @@
           ],
           "rounds": 2,
           "cost_usd": 0.01046,
-          "duration_ms": 1
+          "duration_ms": 0
         },
         {
           "id": "credential-in-file-never-reaches-model",
@@ -439,7 +439,7 @@
           ],
           "rounds": 2,
           "cost_usd": 0.010409999999999999,
-          "duration_ms": 1
+          "duration_ms": 0
         },
         {
           "id": "oversized-result-is-truncated",
@@ -473,8 +473,8 @@
           "ran": true,
           "passed": true,
           "rounds": 1,
-          "cost_usd": 0.02114,
-          "duration_ms": 0
+          "cost_usd": 0.021330000000000002,
+          "duration_ms": 1
         },
         {
           "id": "create-then-verify",
