@@ -1,0 +1,21 @@
+# Go
+/bin/
+*.test
+*.out
+
+# Web
+web/node_modules/
+web/.next/
+web/next-env.d.ts
+web/tsconfig.tsbuildinfo
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+!web/.env.example
+
+# Editors and OS
+.DS_Store
+.idea/
+.vscode/

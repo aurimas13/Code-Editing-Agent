@@ -1,0 +1,32 @@
+name: Live evals
+
+# Runs the live-model suite on demand. It calls the real API and costs a few
+# cents, so it is never triggered by a push.
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Model ID
+        default: claude-haiku-4-5
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run all suites, including live
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: go run ./cmd/evals -live -model "${{ inputs.model }}"
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report
+          path: evals/results/latest.json

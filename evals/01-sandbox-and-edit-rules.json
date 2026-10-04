@@ -1,0 +1,233 @@
+{
+  "name": "Sandbox and edit rules",
+  "description": "Each tool is called directly with hostile or awkward input. No model is involved, so a pass here holds for every model and every prompt.",
+  "kind": "tool",
+  "cases": [
+    {
+      "id": "read-parent-traversal",
+      "category": "sandbox",
+      "why": "The tutorial passed model-supplied paths straight to os.ReadFile, so ../../etc/passwd worked.",
+      "files": {"main.go": "package main\n"},
+      "tool": "read_file",
+      "input": {"path": "../../etc/passwd"},
+      "expect": {"error_contains": "escapes the workspace", "unchanged": true}
+    },
+    {
+      "id": "read-hidden-traversal",
+      "category": "sandbox",
+      "why": "A traversal hidden behind a harmless-looking prefix must be caught before the path is normalised.",
+      "files": {"docs/a.txt": "a\n"},
+      "tool": "read_file",
+      "input": {"path": "docs/../../outside.txt"},
+      "expect": {"error_contains": "escapes the workspace", "unchanged": true}
+    },
+    {
+      "id": "read-absolute-path",
+      "category": "sandbox",
+      "why": "Absolute paths address the host, not the workspace.",
+      "files": {"main.go": "package main\n"},
+      "tool": "read_file",
+      "input": {"path": "/etc/passwd"},
+      "expect": {"error_contains": "escapes the workspace", "unchanged": true}
+    },
+    {
+      "id": "read-home-path",
+      "category": "sandbox",
+      "why": "A leading ~ is how a model asks for the user's home directory.",
+      "files": {"main.go": "package main\n"},
+      "tool": "read_file",
+      "input": {"path": "~/.ssh/id_rsa"},
+      "expect": {"error_contains": "escapes the workspace", "unchanged": true}
+    },
+    {
+      "id": "read-windows-drive",
+      "category": "sandbox",
+      "why": "Drive-letter paths are absolute on Windows hosts.",
+      "files": {"main.go": "package main\n"},
+      "tool": "read_file",
+      "input": {"path": "C:\\Windows\\win.ini"},
+      "expect": {"error_contains": "escapes the workspace", "unchanged": true}
+    },
+    {
+      "id": "read-backslash-traversal",
+      "category": "sandbox",
+      "why": "Backslashes are separators on some hosts and must not slip past a slash-only check.",
+      "files": {"main.go": "package main\n"},
+      "tool": "read_file",
+      "input": {"path": "..\\..\\secrets.txt"},
+      "expect": {"error_contains": "escapes the workspace", "unchanged": true}
+    },
+    {
+      "id": "read-nul-byte",
+      "category": "sandbox",
+      "why": "A NUL byte can truncate a path inside the OS and make a check and an open disagree.",
+      "files": {"main.go": "package main\n"},
+      "tool": "read_file",
+      "input": {"path": "main.go{{nul}}.txt"},
+      "expect": {"error_contains": "control characters", "unchanged": true}
+    },
+    {
+      "id": "write-parent-traversal",
+      "category": "sandbox",
+      "why": "Writes outside the workspace are the dangerous half: the tutorial would create any file the model named.",
+      "files": {"main.go": "package main\n"},
+      "tool": "edit_file",
+      "input": {"path": "../evil.sh", "old_str": "", "new_str": "rm -rf /"},
+      "expect": {"error_contains": "escapes the workspace", "unchanged": true}
+    },
+    {
+      "id": "list-parent-directory",
+      "category": "sandbox",
+      "why": "Listing is reconnaissance; it gets the same boundary as reading.",
+      "files": {"main.go": "package main\n"},
+      "tool": "list_files",
+      "input": {"path": ".."},
+      "expect": {"error_contains": "escapes the workspace", "unchanged": true}
+    },
+    {
+      "id": "quota-oversized-file",
+      "category": "sandbox",
+      "why": "One request must not be able to fill the server's memory.",
+      "files": {"main.go": "package main\n"},
+      "tool": "edit_file",
+      "input": {"path": "big.txt", "old_str": "", "new_str": "{{repeat:0123456789:7000}}"},
+      "expect": {"error_contains": "quota exceeded", "unchanged": true}
+    },
+    {
+      "id": "quota-too-many-files",
+      "category": "sandbox",
+      "why": "Many small files are the other way to exhaust a workspace.",
+      "filler_files": 40,
+      "tool": "edit_file",
+      "input": {"path": "one-more.txt", "old_str": "", "new_str": "x"},
+      "expect": {"error_contains": "quota exceeded", "unchanged": true}
+    },
+    {
+      "id": "edit-ambiguous-match",
+      "category": "edit-rules",
+      "why": "The tutorial replaced every occurrence of old_str while its schema promised exactly one. A vague old_str then rewrites code the model never looked at.",
+      "files": {"app.js": "let total = 0;\ntotal = total + 1;\nconsole.log(total);\n"},
+      "tool": "edit_file",
+      "input": {"path": "app.js", "old_str": "total", "new_str": "sum"},
+      "expect": {"error_contains": "appears 4 times", "unchanged": true}
+    },
+    {
+      "id": "edit-empty-old-str-on-existing-file",
+      "category": "edit-rules",
+      "why": "In the tutorial, an empty old_str on an existing file inserted new_str between every character and destroyed the file.",
+      "files": {"notes.txt": "keep me\n"},
+      "tool": "edit_file",
+      "input": {"path": "notes.txt", "old_str": "", "new_str": "X"},
+      "expect": {"error_contains": "already exists", "unchanged": true}
+    },
+    {
+      "id": "edit-no-match",
+      "category": "edit-rules",
+      "why": "A failed edit must say so clearly enough for the model to re-read the file and retry.",
+      "files": {"app.js": "console.log(1);\n"},
+      "tool": "edit_file",
+      "input": {"path": "app.js", "old_str": "console.log(2);", "new_str": "console.log(3);"},
+      "expect": {"error_contains": "old_str not found", "unchanged": true}
+    },
+    {
+      "id": "edit-identical-strings",
+      "category": "edit-rules",
+      "why": "A no-op edit is a model mistake and should be reported, not silently accepted.",
+      "files": {"app.js": "console.log(1);\n"},
+      "tool": "edit_file",
+      "input": {"path": "app.js", "old_str": "console.log(1);", "new_str": "console.log(1);"},
+      "expect": {"error_contains": "identical", "unchanged": true}
+    },
+    {
+      "id": "edit-missing-file-with-old-str",
+      "category": "edit-rules",
+      "why": "Editing a file that is not there should explain how to create it instead.",
+      "files": {"app.js": "console.log(1);\n"},
+      "tool": "edit_file",
+      "input": {"path": "missing.js", "old_str": "a", "new_str": "b"},
+      "expect": {"error_contains": "does not exist", "unchanged": true}
+    },
+    {
+      "id": "edit-unique-replace",
+      "category": "edit-rules",
+      "why": "The ordinary case: one exact match is replaced and nothing else moves.",
+      "files": {"fizzbuzz.js": "function run(limit = 100) {\n  return limit;\n}\n"},
+      "tool": "edit_file",
+      "input": {"path": "fizzbuzz.js", "old_str": "limit = 100", "new_str": "limit = 15"},
+      "expect": {
+        "output_contains": ["Edited fizzbuzz.js"],
+        "files": {"fizzbuzz.js": {"equals": "function run(limit = 15) {\n  return limit;\n}\n"}}
+      }
+    },
+    {
+      "id": "edit-create-new-file",
+      "category": "edit-rules",
+      "why": "An empty old_str on a missing path creates the file.",
+      "tool": "edit_file",
+      "input": {"path": "hello.txt", "old_str": "", "new_str": "hello\n"},
+      "expect": {"output_contains": ["Created hello.txt"], "files": {"hello.txt": {"equals": "hello\n"}}}
+    },
+    {
+      "id": "edit-create-in-new-directory",
+      "category": "edit-rules",
+      "why": "Parent directories are created as needed.",
+      "tool": "edit_file",
+      "input": {"path": "src/lib/util.js", "old_str": "", "new_str": "export const x = 1;\n"},
+      "expect": {"files": {"src/lib/util.js": {"equals": "export const x = 1;\n"}}}
+    },
+    {
+      "id": "edit-file-used-as-directory",
+      "category": "edit-rules",
+      "why": "A path cannot pass through an existing file.",
+      "files": {"greet.js": "console.log('hi');\n"},
+      "tool": "edit_file",
+      "input": {"path": "greet.js/extra.txt", "old_str": "", "new_str": "x"},
+      "expect": {"error_contains": "is a file, not a directory", "unchanged": true}
+    },
+    {
+      "id": "input-unknown-field",
+      "category": "input-validation",
+      "why": "A model that invents a parameter should be told, not ignored.",
+      "files": {"main.go": "package main\n"},
+      "tool": "read_file",
+      "input": {"path": "main.go", "encoding": "utf-8"},
+      "expect": {"error_contains": "unknown field", "unchanged": true}
+    },
+    {
+      "id": "input-wrong-type",
+      "category": "input-validation",
+      "why": "The tutorial's list_files called panic on malformed input, which would take the whole server down.",
+      "files": {"main.go": "package main\n"},
+      "tool": "list_files",
+      "input": {"path": 42},
+      "expect": {"error_contains": "invalid tool input", "unchanged": true}
+    },
+    {
+      "id": "read-directory",
+      "category": "input-validation",
+      "why": "Reading a directory should fail with a message that points to list_files.",
+      "files": {"src/a.js": "1\n"},
+      "tool": "read_file",
+      "input": {"path": "src"},
+      "expect": {"error_contains": "is a directory", "unchanged": true}
+    },
+    {
+      "id": "read-missing-file",
+      "category": "input-validation",
+      "why": "A missing file is an ordinary, recoverable error.",
+      "files": {"main.go": "package main\n"},
+      "tool": "read_file",
+      "input": {"path": "nope.txt"},
+      "expect": {"error_contains": "does not exist", "unchanged": true}
+    },
+    {
+      "id": "list-root",
+      "category": "input-validation",
+      "why": "With no path, list_files lists the workspace root, marking directories with a trailing slash.",
+      "files": {"main.go": "package main\n", "src/a.js": "1\n"},
+      "tool": "list_files",
+      "input": {},
+      "expect": {"output_contains": ["\"main.go\"", "\"src/\"", "\"src/a.js\""], "unchanged": true}
+    }
+  ]
+}

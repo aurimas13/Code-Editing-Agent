@@ -1,0 +1,7 @@
+.git
+.github
+web
+docs
+bin
+evals/results
+.env*

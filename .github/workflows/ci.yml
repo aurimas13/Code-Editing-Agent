@@ -1,0 +1,109 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: Go, evals, generated files
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Formatting
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+
+      - name: Vet
+        run: go vet ./...
+
+      # Includes: every tutorial checkpoint compiles, the baseline tests that
+      # pin the tutorial's behaviour, and the deterministic eval suites.
+      - name: Tests (race detector)
+        run: go test -race ./...
+
+      - name: Deterministic evals
+        run: go run ./cmd/evals -out /tmp/evals.json -web ""
+
+      - name: The eval report shown on the site matches a fresh run
+        run: python3 scripts/check_eval_report.py /tmp/evals.json web/src/generated/evals.json
+
+      # Breaks each safeguard in a scratch copy and expects a test to fail.
+      - name: Tests notice when a safeguard is removed
+        run: python3 scripts/mutation_check.py
+
+      - name: Tutorial checkpoints are generated from the finished file
+        run: |
+          python3 scripts/make_guide_steps.py
+          git diff --exit-code guide/steps
+
+      - name: Website data files are up to date with the Go source
+        run: |
+          go run ./cmd/gen
+          git diff --exit-code web/src/generated/guide.json web/src/generated/agent.json
+
+      - name: API image builds
+        run: docker build -t code-editing-agent .
+
+  integration:
+    name: Storage and access rules against Postgres
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGPASSWORD: postgres
+      JWT_SECRET: ci-only-secret-ci-only-secret-0123456789
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Create Supabase-style roles and apply migrations
+        run: |
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 -f scripts/local_supabase_roles.sql
+          psql -h localhost -U postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261004000001_init.sql
+
+      - name: Start PostgREST
+        run: |
+          curl -sSL https://github.com/PostgREST/postgrest/releases/download/v13.0.4/postgrest-v13.0.4-linux-static-x86-64.tar.xz | tar -xJ
+          PGRST_DB_URI="postgres://authenticator:authenticator@localhost:5432/postgres" \
+          PGRST_DB_SCHEMAS=public PGRST_DB_ANON_ROLE=anon PGRST_JWT_SECRET="$JWT_SECRET" \
+          PGRST_SERVER_PORT=3001 ./postgrest &
+          sleep 3
+
+      - name: Integration tests
+        run: |
+          eval "$(python3 scripts/local_keys.py "$JWT_SECRET")"
+          POSTGREST_TEST_URL=http://localhost:3001 go test -count=1 -run Integration -v ./internal/store/
+
+  web:
+    name: Website
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build

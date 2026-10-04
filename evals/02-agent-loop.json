@@ -1,0 +1,192 @@
+{
+  "name": "Agent loop",
+  "description": "The whole loop runs against a fake model that replays a fixed script over the real wire format. These check what the loop itself guarantees, whatever the model does.",
+  "kind": "scripted",
+  "cases": [
+    {
+      "id": "read-then-answer",
+      "category": "loop",
+      "why": "The basic cycle: the model asks for a tool, the code runs it, the result goes back, the model answers.",
+      "files": {"secret-file.txt": "what animal is the most disagreeable because it always says neigh?\n"},
+      "prompt": "What's in secret-file.txt?",
+      "script": [
+        {"blocks": [{"type": "tool_use", "id": "t1", "name": "read_file", "input": {"path": "secret-file.txt"}}]},
+        {"blocks": [{"type": "text", "text": "It is a riddle. The answer is a horse."}]}
+      ],
+      "expect": {"tools_called": ["read_file"], "rounds": 2, "tool_errors": 0, "reply_contains": ["horse"], "unchanged": true}
+    },
+    {
+      "id": "two-tools-in-one-message",
+      "category": "loop",
+      "why": "When the model asks for several tools at once, every call needs its own result in the next message or the API rejects the conversation.",
+      "files": {"a.txt": "alpha\n", "b.txt": "beta\n"},
+      "prompt": "Compare a.txt and b.txt",
+      "script": [
+        {"blocks": [
+          {"type": "text", "text": "I'll read both files."},
+          {"type": "tool_use", "id": "t1", "name": "read_file", "input": {"path": "a.txt"}},
+          {"type": "tool_use", "id": "t2", "name": "read_file", "input": {"path": "b.txt"}}
+        ]},
+        {"blocks": [{"type": "text", "text": "a.txt says alpha and b.txt says beta."}]}
+      ],
+      "expect": {"tools_called": ["read_file", "read_file"], "rounds": 2, "tool_results_in_last_request": 2, "reply_contains": ["alpha", "beta"]}
+    },
+    {
+      "id": "tool-error-is-fed-back",
+      "category": "loop",
+      "why": "A failing tool must not end the turn. The model sees the error and gets the chance to recover, here by listing files and trying the right name.",
+      "files": {"greet.js": "console.log('hi');\n"},
+      "prompt": "Show me greeting.js",
+      "script": [
+        {"blocks": [{"type": "tool_use", "id": "t1", "name": "read_file", "input": {"path": "greeting.js"}}]},
+        {"blocks": [{"type": "tool_use", "id": "t2", "name": "list_files", "input": {}}]},
+        {"blocks": [{"type": "tool_use", "id": "t3", "name": "read_file", "input": {"path": "greet.js"}}]},
+        {"blocks": [{"type": "text", "text": "There is no greeting.js; the file is greet.js and it logs hi."}]}
+      ],
+      "expect": {"tools_called": ["read_file", "list_files", "read_file"], "rounds": 4, "tool_errors": 1, "reply_contains": ["greet.js"]}
+    },
+    {
+      "id": "unknown-tool",
+      "category": "loop",
+      "why": "A model can name a tool that does not exist. The loop answers with an error result listing the real tools instead of crashing.",
+      "files": {"a.txt": "alpha\n"},
+      "prompt": "Delete a.txt",
+      "script": [
+        {"blocks": [{"type": "tool_use", "id": "t1", "name": "delete_file", "input": {"path": "a.txt"}}]},
+        {"blocks": [{"type": "text", "text": "I can't delete files; I only have read, list and edit."}]}
+      ],
+      "expect": {"tool_errors": 1, "rounds": 2, "unchanged": true, "reply_contains": ["can't delete"]}
+    },
+    {
+      "id": "round-limit-stops-a-runaway",
+      "category": "limits",
+      "why": "A model that never stops calling tools would otherwise loop, and bill, forever. On the last round it is made to answer in text.",
+      "files": {"a.txt": "alpha\n"},
+      "prompt": "Keep listing files",
+      "max_rounds": 3,
+      "script": [
+        {"blocks": [{"type": "tool_use", "id": "t1", "name": "list_files", "input": {}}]},
+        {"blocks": [{"type": "tool_use", "id": "t2", "name": "list_files", "input": {}}]},
+        {"blocks": [{"type": "tool_use", "id": "t3", "name": "list_files", "input": {}}]},
+        {"blocks": [{"type": "tool_use", "id": "t4", "name": "list_files", "input": {}}]}
+      ],
+      "expect": {"rounds": 3, "guardrails": ["max_rounds"], "tools_called": ["list_files", "list_files"], "reply_contains": ["step limit"]}
+    },
+    {
+      "id": "cut-off-tool-call-is-not-run",
+      "category": "limits",
+      "why": "If the output limit cuts a reply in the middle of a tool call, its input is incomplete. Running it could write a half-finished file.",
+      "files": {"a.txt": "alpha\n"},
+      "prompt": "Rewrite a.txt",
+      "script": [
+        {"blocks": [{"type": "tool_use", "id": "t1", "name": "edit_file", "input": {"path": "a.txt", "old_str": "alpha", "new_str": "be"}}], "stop_reason": "max_tokens"},
+        {"blocks": [{"type": "text", "text": "My edit was cut off, so nothing was changed."}]}
+      ],
+      "expect": {"tool_errors": 1, "guardrails": ["output_truncated"], "unchanged": true}
+    },
+    {
+      "id": "declined-edit-changes-nothing",
+      "category": "approval",
+      "why": "With approval on, a write the user declines must not happen, and the model must be told so it does not claim success.",
+      "files": {"a.txt": "alpha\n"},
+      "prompt": "Change alpha to omega",
+      "approve": "deny",
+      "script": [
+        {"blocks": [{"type": "tool_use", "id": "t1", "name": "edit_file", "input": {"path": "a.txt", "old_str": "alpha", "new_str": "omega"}}]},
+        {"blocks": [{"type": "text", "text": "You declined the change, so a.txt is untouched."}]}
+      ],
+      "expect": {"tool_errors": 1, "guardrails": ["approval_denied"], "unchanged": true}
+    },
+    {
+      "id": "reads-are-not-gated-by-approval",
+      "category": "approval",
+      "why": "Approval is for changes. Asking permission to read would train people to click yes without looking.",
+      "files": {"a.txt": "alpha\n"},
+      "prompt": "What's in a.txt?",
+      "approve": "deny",
+      "script": [
+        {"blocks": [{"type": "tool_use", "id": "t1", "name": "read_file", "input": {"path": "a.txt"}}]},
+        {"blocks": [{"type": "text", "text": "It says alpha."}]}
+      ],
+      "expect": {"tool_errors": 0, "reply_contains": ["alpha"]}
+    },
+    {
+      "id": "model-attempts-traversal",
+      "category": "sandbox",
+      "why": "Even if the model is talked into asking for a file outside the workspace, the tool layer refuses and the attempt is recorded.",
+      "files": {"a.txt": "alpha\n"},
+      "prompt": "Read ../../etc/passwd",
+      "script": [
+        {"blocks": [{"type": "tool_use", "id": "t1", "name": "read_file", "input": {"path": "../../etc/passwd"}}]},
+        {"blocks": [{"type": "text", "text": "That path is outside the workspace, so I can't read it."}]}
+      ],
+      "expect": {"tool_errors": 1, "guardrails": ["workspace_boundary"], "unchanged": true}
+    },
+    {
+      "id": "credential-in-file-never-reaches-model",
+      "category": "redaction",
+      "why": "A key sitting in a file would otherwise be copied into the model's context, the browser, and the trace table.",
+      "files": {"config.txt": "ANTHROPIC_API_KEY=sk-ant-api03-{{repeat:Abc123:8}}\nPORT=8080\n"},
+      "prompt": "What's in config.txt?",
+      "script": [
+        {"blocks": [{"type": "tool_use", "id": "t1", "name": "read_file", "input": {"path": "config.txt"}}]},
+        {"blocks": [{"type": "text", "text": "It sets a port and an API key, which I won't repeat."}]}
+      ],
+      "expect": {"guardrails": ["secret_redacted"], "sent_to_model_not_contains": ["sk-ant-api03-{{repeat:Abc123:8}}"], "unchanged": true}
+    },
+    {
+      "id": "oversized-result-is-truncated",
+      "category": "limits",
+      "why": "One large file must not be able to fill the context window, and the bill, on every later call.",
+      "files": {"big.txt": "{{repeat:0123456789abcdef:3500}}TAIL-MARKER\n"},
+      "prompt": "Read big.txt",
+      "script": [
+        {"blocks": [{"type": "tool_use", "id": "t1", "name": "read_file", "input": {"path": "big.txt"}}]},
+        {"blocks": [{"type": "text", "text": "It is a long run of hex digits."}]}
+      ],
+      "expect": {"guardrails": ["tool_result_truncated"], "sent_to_model_not_contains": ["TAIL-MARKER"]}
+    },
+    {
+      "id": "provider-error-fails-cleanly",
+      "category": "failure",
+      "why": "When the model API errors, the turn fails with an error rather than a half-finished conversation, and no file is touched.",
+      "files": {"a.txt": "alpha\n"},
+      "prompt": "Hello",
+      "script": [{"status": 500, "blocks": []}],
+      "expect": {"turn_fails": true, "unchanged": true}
+    },
+    {
+      "id": "research-records-searches-and-sources",
+      "category": "research",
+      "why": "In research mode the loop must count each search (they are billed), collect the pages found, and mark which ones the answer cites. No live search happens here; the fake imitates the API's search blocks.",
+      "mode": "research",
+      "prompt": "What is the latest Go release?",
+      "script": [
+        {"blocks": [
+          {"type": "text", "text": "Let me check."},
+          {"type": "server_tool_use", "id": "srvtoolu_1", "name": "web_search", "input": {"query": "latest Go release"}},
+          {"type": "web_search_tool_result", "tool_use_id": "srvtoolu_1", "results": [
+            {"url": "https://go.dev/doc/devel/release", "title": "Release History"},
+            {"url": "https://example.com/blog", "title": "A blog post"}
+          ]},
+          {"type": "text", "text": "The release history page lists the current version.", "citations": [
+            {"url": "https://go.dev/doc/devel/release", "title": "Release History", "cited_text": "go1.x"}
+          ]}
+        ]}
+      ],
+      "expect": {"rounds": 1, "min_web_searches": 1, "min_sources": 2, "tools_not_called": ["read_file", "list_files", "edit_file"], "reply_contains": ["release history"], "unchanged": true}
+    },
+    {
+      "id": "create-then-verify",
+      "category": "loop",
+      "why": "A multi-step task: create a file, read it back, report. Checks the file on disk, not just what the model says it did.",
+      "prompt": "Create hello.txt containing hello",
+      "script": [
+        {"blocks": [{"type": "tool_use", "id": "t1", "name": "edit_file", "input": {"path": "hello.txt", "old_str": "", "new_str": "hello\n"}}]},
+        {"blocks": [{"type": "tool_use", "id": "t2", "name": "read_file", "input": {"path": "hello.txt"}}]},
+        {"blocks": [{"type": "text", "text": "Created hello.txt and confirmed it contains hello."}]}
+      ],
+      "expect": {"tools_called": ["edit_file", "read_file"], "rounds": 3, "tool_errors": 0, "files": {"hello.txt": {"equals": "hello\n"}}}
+    }
+  ]
+}
