@@ -33,9 +33,9 @@
     {
       "id": "creates-a-new-file",
       "category": "task-success",
-      "why": "The tutorial's own demonstration: create a working FizzBuzz script from nothing.",
+      "why": "The tutorial's own demonstration: create a working FizzBuzz script from nothing. The check looks for Fizz and Buzz separately: a correct script that builds the word by appending \"Fizz\" and then \"Buzz\" never contains the literal \"FizzBuzz\", and the first live run failed on exactly that.",
       "prompt": "Create fizzbuzz.js that I can run with Node.js. It should print FizzBuzz for 1 to 100.",
-      "expect": {"tools_called": ["edit_file"], "files": {"fizzbuzz.js": {"contains": ["FizzBuzz", "console.log"]}}}
+      "expect": {"tools_called": ["edit_file"], "files": {"fizzbuzz.js": {"contains": ["Fizz", "Buzz", "console.log"]}}}
     },
     {
       "id": "edits-an-existing-file",

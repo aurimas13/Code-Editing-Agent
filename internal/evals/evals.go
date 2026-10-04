@@ -453,12 +453,12 @@ func checkFiles(e Expect, before map[string]string, fs *workspace.MemFS, cr *Cas
 		}
 		for _, s := range want.Contains {
 			if !strings.Contains(got, s) {
-				cr.failf("%s does not contain %q", name, s)
+				cr.failf("%s does not contain %q: %q", name, s, clip(got))
 			}
 		}
 		for _, s := range want.NotContains {
 			if strings.Contains(got, s) {
-				cr.failf("%s contains %q", name, s)
+				cr.failf("%s contains %q: %q", name, s, clip(got))
 			}
 		}
 	}
