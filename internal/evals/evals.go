@@ -303,6 +303,7 @@ func runAgentCase(ctx context.Context, c Case, client llm.Client, model string, 
 		System:    agent.SystemPrompt(research, false),
 		MaxRounds: c.MaxRounds,
 		WebSearch: research,
+		Now:       time.Now,
 	}
 	if c.Approve == "deny" {
 		cfg.Approve = func(context.Context, agent.ToolEvent) (bool, error) { return false, nil }

@@ -9,10 +9,12 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -43,6 +45,10 @@ type Config struct {
 	// Approve, if set, is asked before any tool that changes the workspace
 	// runs. Returning false sends a refusal back to the model.
 	Approve func(ctx context.Context, call ToolEvent) (bool, error)
+	// Now, if set, puts today's date at the end of the system prompt. The
+	// model has no clock: without a date it cannot tell that a search
+	// result is from last winter.
+	Now func() time.Time
 }
 
 // Defaults fills unset fields with conservative values.
@@ -81,6 +87,15 @@ func New(client llm.Client, registry *tools.Registry, cfg Config) *Agent {
 // Config returns the effective configuration.
 func (a *Agent) Config() Config { return a.cfg }
 
+// system is the system prompt for a model call, with today's date if the
+// agent was given a clock.
+func (a *Agent) system() string {
+	if a.cfg.Now == nil || a.cfg.System == "" {
+		return a.cfg.System
+	}
+	return a.cfg.System + "\n\nToday's date is " + a.cfg.Now().UTC().Format("Monday, 2 January 2006") + " (UTC)."
+}
+
 // Turn handles one user message. It returns the extended conversation and a
 // summary. If the model call fails, the original history is returned
 // unchanged so the session stays valid; file changes already made by tools
@@ -118,7 +133,7 @@ func (a *Agent) Turn(
 		var streamedBytes int
 		msg, err := a.llm.Generate(ctx, llm.Request{
 			Model:     a.cfg.Model,
-			System:    a.cfg.System,
+			System:    a.system(),
 			Messages:  conv,
 			Tools:     a.toolParams(),
 			MaxTokens: a.cfg.MaxTokens,
@@ -273,6 +288,15 @@ func (a *Agent) runTool(
 	if len(input) == 0 {
 		input = json.RawMessage(`{}`)
 	}
+	// After a web search the model marks quoted passages with <cite> tags.
+	// In a reply the API turns those into citations; in a tool input they
+	// are just text, and would be written into the user's file as markup.
+	if a.cfg.WebSearch {
+		if clean, changed := stripCitationTags(input); changed {
+			input = clean
+			guard(round, "citation_markup_removed", "from "+block.Name+" input")
+		}
+	}
 	ev := ToolEvent{ID: block.ID, Name: block.Name, Input: displayInput(input)}
 	call := ev
 	emit(Event{Type: EventToolCall, Round: round, Tool: &call})
@@ -397,4 +421,35 @@ func addSource(list []Source, s Source) []Source {
 		}
 	}
 	return append(list, s)
+}
+
+var citationTag = regexp.MustCompile(`</?cite\b[^>]*>`)
+
+// stripCitationTags removes <cite ...> and </cite> from every string in a
+// tool input, keeping the text between them. Input that is not a JSON object
+// is returned as it came; the tool will report what is wrong with it.
+func stripCitationTags(input json.RawMessage) (json.RawMessage, bool) {
+	if !bytes.Contains(input, []byte("cite")) {
+		return input, false
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(input, &fields); err != nil {
+		return input, false
+	}
+	changed := false
+	for k, v := range fields {
+		if str, ok := v.(string); ok {
+			if clean := citationTag.ReplaceAllString(str, ""); clean != str {
+				fields[k], changed = clean, true
+			}
+		}
+	}
+	if !changed {
+		return input, false
+	}
+	out, err := json.Marshal(fields)
+	if err != nil {
+		return input, false
+	}
+	return out, true
 }

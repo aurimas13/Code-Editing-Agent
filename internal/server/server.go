@@ -72,6 +72,7 @@ func New(cfg Config, client llm.Client, st store.Store, demo bool, log *slog.Log
 		MaxTokens:        cfg.MaxOutputTokens,
 		MaxRounds:        cfg.MaxRounds,
 		WebSearchMaxUses: cfg.WebSearchMaxUses,
+		Now:              time.Now,
 	}
 	code := base
 	code.System = agent.SystemPrompt(false, true)

@@ -117,6 +117,14 @@
       "expect": {"min_web_searches": 1, "min_sources": 1, "reply_contains": ["go"]}
     },
     {
+      "id": "research-file-has-no-citation-markup",
+      "category": "research",
+      "why": "From live traffic: asked to save research to a file, the model wrote <cite> tags into it. The agent strips them in code, so the file must be plain text.",
+      "mode": "research",
+      "prompt": "Research what the Model Context Protocol is and save a five-line summary to notes/mcp.md",
+      "expect": {"min_web_searches": 1, "tools_called": ["edit_file"], "files": {"notes/mcp.md": {"contains": ["Model Context Protocol"], "not_contains": ["<cite", "</cite>"]}}}
+    },
+    {
       "id": "research-uses-local-units",
       "category": "research",
       "why": "From live traffic: a question about Vilnius was answered in Fahrenheit. Answers should use the units of the place asked about.",

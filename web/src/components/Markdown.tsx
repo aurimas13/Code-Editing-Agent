@@ -109,11 +109,13 @@ export function Markdown({ text }: { text: string }) {
     }
     const joined = para.join(" ");
     // The agent's system prompt asks it to end with this line; set it apart.
-    if (joined.startsWith("How I did it:")) {
+    // The model sometimes writes it in bold or changes the capitals.
+    const how = /^\**\s*how i did it\s*:?\s*\**\s*:?\s*/i.exec(joined);
+    if (how) {
       blocks.push(
         <p key={key++} className="md-how">
           <span className="eli5-tag">how I did it</span>
-          {inline(joined.slice("How I did it:".length).trim(), `how${key}`)}
+          {inline(joined.slice(how[0].length).trim(), `how${key}`)}
         </p>,
       );
     } else {

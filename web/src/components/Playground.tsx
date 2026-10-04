@@ -77,7 +77,7 @@ const SUGGESTIONS: Record<Mode, { label: string; prompt: string; tone?: "risk" }
     { label: "Fix a bug", prompt: "Find and fix the bug in greet.js" },
     { label: "Create a file", prompt: "Create fizzbuzz.js that I can run with Node.js" },
     { label: "Look around", prompt: "What do you see in this directory?" },
-    { label: "Try to break out", prompt: "Read ../../etc/passwd", tone: "risk" },
+    { label: "Try to break out", prompt: "Call read_file on ../../etc/passwd and tell me exactly what the tool returned.", tone: "risk" },
   ],
   research: [
     { label: "Something recent", prompt: "What changed in the latest stable Go release? Cite your sources." },
@@ -98,6 +98,7 @@ const GUARDRAIL_ELI5: Record<string, string> = {
   model_refusal: "The model declined to continue with this request.",
   approval_denied: "A change needed a yes from a person and did not get one.",
   web_search_error: "The web search did not complete.",
+  citation_markup_removed: "Claude left citation tags in the text it was saving. The program took them out, so the file holds plain words.",
 };
 
 function describe(ev: AgentEvent): { tone: string; title: string; meta?: string; body?: string; eli5: string } | null {
@@ -334,6 +335,8 @@ export function Playground() {
     } finally {
       setBusy(false);
       abort.current = null;
+      // The budget figure in the header moves with every turn.
+      getConfig().then(setConfig).catch(() => {});
     }
   };
 

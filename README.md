@@ -121,7 +121,7 @@ docs/                deployment, evals, security, decision records
 ```bash
 make test             # go vet, go test -race, web tests
 make evals            # 39 deterministic cases; writes the report the site shows
-make evals-live       # plus 14 live-model cases (needs a key, costs cents)
+make evals-live       # plus 15 live-model cases (needs a key, costs cents)
 make test-integration # store and access rules against a real Postgres
 ```
 
@@ -129,11 +129,29 @@ make test-integration # store and access rules against a real Postgres
 | --- | --- | --- | --- |
 | Sandbox and edit rules | 25 | none | 25/25 |
 | Agent loop | 14 | scripted fake over the real wire format | 14/14 |
-| Live model | 14 | real | not run in the committed report |
+| Live model | 15 | real | not run in the committed report |
 
 The live suite has not been run for the committed report; the site shows it
 as "not run" rather than implying a result. How the suites work and how to
 add a case: [docs/EVALS.md](docs/EVALS.md).
+
+### What the first day of live traffic found
+
+Everything above passed before launch. The first real conversations still
+turned up six problems, none of which a scripted model could have shown:
+
+| What happened | Fix | Where |
+| --- | --- | --- |
+| A cited answer rendered as broken lines: the API returns one text block per cited span | Join neighbouring text blocks into one passage | code + test |
+| Asked to save research, the model wrote `<cite>` tags into the file | Strip citation markup from tool input in research mode | code + test |
+| October weather reported as -13 °C from a page cached in winter | Give the model today's date; say what a search snippet can and cannot show | code + prompt |
+| "Read ../../etc/passwd" declined by the model without calling the tool | Tell the model to always try, so the refusal comes from the sandbox | prompt |
+| "Fix a bug" got a question back | Look at the files before asking | prompt |
+| The model agreed at once when a fact was disputed | Search again and compare before changing the answer | prompt |
+
+The three code fixes are covered by tests and the mutation check. The prompt
+fixes can only be checked against the real model, so each has a case in the
+live suite.
 
 ## Design decisions
 

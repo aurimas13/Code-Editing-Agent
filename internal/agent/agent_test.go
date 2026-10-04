@@ -218,6 +218,49 @@ func TestSecretInToolInputIsHiddenFromEvents(t *testing.T) {
 	}
 }
 
+// The model has no clock. Asked for the weather in October it reported a page
+// cached in winter as current; with the date in the prompt it can tell.
+func TestTodaysDateIsSentWithTheSystemPrompt(t *testing.T) {
+	day := time.Date(2026, 10, 4, 23, 30, 0, 0, time.UTC)
+	ag, fake := newAgent(t, Config{System: "Be brief.", Now: func() time.Time { return day }}, fakellm.Text("hi"))
+	if _, _, err := ag.Turn(context.Background(), nil, memfs(t, nil), "hello", nil); err != nil {
+		t.Fatal(err)
+	}
+	if sys := string(fake.Requests()[0].System); !strings.Contains(sys, "Today's date is Sunday, 4 October 2026 (UTC).") {
+		t.Errorf("no date in the system prompt: %s", sys)
+	}
+}
+
+// After a search the model quotes sources with <cite> tags. In a reply the
+// API turns them into citations; in edit_file input they were written into
+// the file as markup. In research mode they are removed before the tool runs.
+func TestCitationTagsAreStrippedFromFilesInResearchMode(t *testing.T) {
+	write := fakellm.ToolUse("t1", "edit_file",
+		`{"path":"notes/mcp.md","old_str":"","new_str":"# MCP\n<cite index=\"19-1\">An open protocol.</cite>\n<cite index=\"22-4,22-5\">Like USB-C.</cite>\n"}`)
+
+	for _, research := range []bool{true, false} {
+		ag, _ := newAgent(t, Config{WebSearch: research}, write, fakellm.Text("Saved."))
+		fs := memfs(t, nil)
+		_, res, err := ag.Turn(context.Background(), nil, fs, "Save a summary", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := fs.Snapshot()["notes/mcp.md"]
+		flagged := len(res.Guardrails) == 1 && res.Guardrails[0].Kind == "citation_markup_removed"
+		if research {
+			if got != "# MCP\nAn open protocol.\nLike USB-C.\n" || !flagged {
+				t.Errorf("research mode: file = %q, guardrails = %+v", got, res.Guardrails)
+			}
+			if strings.Contains(string(res.ToolCalls[0].Input), "cite") {
+				t.Errorf("the trace still shows the markup: %s", res.ToolCalls[0].Input)
+			}
+		} else if !strings.Contains(got, `<cite index="19-1">`) || flagged {
+			// In code mode a file may really be about the <cite> element.
+			t.Errorf("code mode must leave the text alone: file = %q, guardrails = %+v", got, res.Guardrails)
+		}
+	}
+}
+
 // A cited answer arrives as many small text blocks, one per cited span, cut
 // in the middle of sentences. Shown one block per paragraph it reads as broken
 // lines, which is what the first live research answer looked like. The blocks

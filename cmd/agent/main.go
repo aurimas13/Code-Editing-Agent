@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -83,6 +84,7 @@ func main() {
 		System:    agent.SystemPrompt(*research, false),
 		MaxRounds: *maxRounds,
 		WebSearch: *research,
+		Now:       time.Now,
 	}
 	if !*yes {
 		cfg.Approve = func(_ context.Context, call agent.ToolEvent) (bool, error) {
