@@ -129,31 +129,53 @@ make test-integration # store and access rules against a real Postgres
 | --- | --- | --- | --- |
 | Sandbox and edit rules | 25 | none | 25/25 |
 | Agent loop | 14 | scripted fake over the real wire format | 14/14 |
-| Live model | 15 | real | not run in the committed report |
+| Live model | 15 | real (`claude-haiku-4-5`) | 15/15 on the last run, 4 October 2026 |
 
-The live suite has not been run for the committed report; the site shows it
-as "not run" rather than implying a result. How the suites work and how to
-add a case: [docs/EVALS.md](docs/EVALS.md).
+The first two suites run on every commit. The live suite costs a few cents
+and is run on demand; the report keeps its last result with the date, model
+and commit it ran at, and drops it as soon as a case changes. One run is one
+sample, not a guarantee. How the suites work and how to add a case:
+[docs/EVALS.md](docs/EVALS.md).
 
-### What the first day of live traffic found
+### What the first day of live use found
 
-Everything above passed before launch. The first real conversations still
-turned up eight problems, none of which a scripted model could have shown:
+Everything above passed before launch. Then the deployed agent was used by
+hand: 24 messages in 7 sessions over 50 minutes, 48 cents in all. That turned
+up 13 problems that no suite had caught. Each was traced to its cause in
+the stored trace and fixed. The ones that mattered
+most:
 
 | What happened | Fix | Where |
 | --- | --- | --- |
 | A cited answer rendered as broken lines: the API returns one text block per cited span | Join neighbouring text blocks into one passage | code + test |
 | Asked to save research, the model wrote `<cite>` tags into the file | Strip citation markup from tool input in research mode | code + test |
 | October weather reported as -13 °C from a page cached in winter | Give the model today's date; say what a search snippet can and cannot show | code + prompt |
-| "Read ../../etc/passwd" declined by the model without calling the tool | Tell the model to always try, so the refusal comes from the sandbox | prompt |
-| "Fix a bug" got a question back | Look at the files before asking | prompt |
-| The model agreed at once when a fact was disputed | Search again and compare before changing the answer | prompt |
 | Each earlier search added about 8,500 tokens to every later call: a one-line question cost 0.3 cents fresh, 3.5 cents after two searches | Drop search results from the conversation when the turn ends; keep the reply | code + test |
+| "Read ../../etc/passwd" declined by the model without calling the tool | Tell the model to always try, so the refusal comes from the sandbox | prompt, second wording |
+| "Fix a bug" got a question back | Look at the files before asking | prompt |
+| Weather for Liverpool in Fahrenheit | Say how to convert and show the format | prompt, second wording |
+| The model agreed at once when a fact was disputed | Search again and compare before changing the answer | prompt, no automated check |
 | A weather question in Code mode was sent to a weather app | Tell the code-mode agent about the Research tab | prompt + test |
 
-The code fixes are covered by tests and the mutation check. The prompt fixes
-can only be checked against the real model, so most have a case in the live
-suite.
+The full list, with what was asked, what came back, the cause and what now
+checks each one, is on the site's
+[Evals page](https://code.aurimas.io/evals#live-use) and in
+[`web/src/content/fieldnotes.ts`](web/src/content/fieldnotes.ts).
+
+Two things about the evals themselves came out of it:
+
+- **The live suite was wrong twice before the agent was.** Its first two runs
+  scored 14 of 15, on two different cases. Both times the agent had done the
+  task and the check had named one way of doing it: a FizzBuzz that appends
+  "Fizz" then "Buzz" never contains the word "FizzBuzz", and "print only
+  until 15" does not require changing the default. The agent's code was the
+  same in all three runs; only the checks changed. A live check has to test
+  the outcome, not one route to it.
+- **Prompt fixes are the weak layer.** Code fixes are covered by tests and by
+  the mutation check. Prompt fixes can only be checked against the real
+  model; two had to be reworded before the model followed them, one is still
+  only partly followed, and three have no automated check because the live
+  suite sends one message per case.
 
 ## Design decisions
 

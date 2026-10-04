@@ -122,6 +122,41 @@ Vercel issues the certificate once the record resolves.
       done
       ```
 
+## If it does not come up
+
+These four happened on the first deployment of this project, in this order.
+
+**`/api/config` still says `"mode": "demo"` and `"store": "memory"` after the
+keys were added.** Railway saves new variables as *staged changes*. The
+running container does not get them until the "Apply changes" banner at the
+top of the project canvas is deployed. A redeploy of the old deployment does
+not pick them up either. The server log says which variable it did not find.
+
+**The log says `permission denied for table usage_daily` with a hint about
+the `anon` role.** `SUPABASE_SECRET_KEY` holds the publishable key
+(`sb_publishable_...`) or the legacy `anon` key. Those are meant to be locked
+out of these tables. Use the key under *Secret keys* (`sb_secret_...`). While
+the wrong key is in place the site still answers, but nothing is stored and
+the daily budget resets on every restart.
+
+**The domain does not load for you, but it does for others.** A resolver
+that looked the name up before the DNS record existed remembers "no such
+name" for up to an hour. A VPN makes this easy to miss, because its resolver
+is used on every network you try. Compare the two answers:
+
+```bash
+nslookup code.example.com 8.8.8.8   # a public resolver
+nslookup code.example.com           # the one you are using
+```
+
+If the first finds it and the second does not, the record is correct. Turn
+the VPN off, flush the local cache, or wait.
+
+**Vercel shows "DNS Change Recommended" next to "Valid Configuration".** The
+site works. Vercel now prefers a project-specific CNAME target over
+`<project>.vercel.app`; "View DNS configuration" shows it. Edit the existing
+record's value in place: deleting and re-adding it reopens the gap above.
+
 ## Operating it
 
 **Publish a research answer** after reading it and checking its sources:

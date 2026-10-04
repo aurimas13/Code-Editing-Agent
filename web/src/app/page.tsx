@@ -45,7 +45,9 @@ const ADDED = [
 ];
 
 export default function Home() {
-  const ran = evals.suites.filter((s) => s.ran);
+  // Only the suites that need no real model run on every commit. The live
+  // suite is run on demand and reported on the Evals page with its own date.
+  const ran = evals.suites.filter((s) => s.ran && s.kind !== "live");
   const passed = ran.reduce((n, s) => n + s.passed, 0);
   const total = ran.reduce((n, s) => n + s.total, 0);
   const finalLines = guide.steps[guide.steps.length - 1]!.code.split("\n").length - 1;

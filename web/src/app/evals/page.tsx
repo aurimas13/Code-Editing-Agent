@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Terminal } from "@/components/Code";
 import report from "@/generated/evals.json";
+import { findings, LAYER, liveRuns, liveUse, stillImperfect } from "@/content/fieldnotes";
 
 export const metadata: Metadata = {
   title: "Evals",
@@ -22,11 +23,17 @@ const BASELINE = [
   { test: "TestBaseline_ListFilesPanicsOnMalformedInput", shows: "Malformed input makes list_files panic.", fixedBy: "input-wrong-type" },
 ];
 
+/** A live result keeps its own date, model and commit: it is run on demand and outlives the commit it ran at. */
+type Provenance = { ran_at?: string; model?: string; git_sha?: string };
+
+const stamp = (iso: string) => new Date(iso).toISOString().slice(0, 16).replace("T", " ");
+
 const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 function SuiteSection({ suite }: { suite: Suite }) {
   const kind = KIND[suite.kind] ?? { label: suite.kind, what: "" };
   const categories = [...new Set(suite.cases.map((c) => c.category))];
+  const from = suite as Provenance;
   return (
     <section className="suite" id={slug(suite.name)}>
       <header className="suite-head">
@@ -58,6 +65,18 @@ function SuiteSection({ suite }: { suite: Suite }) {
             <span key={c.id} className={c.passed ? "is-pass" : "is-fail"} title={`${c.id}: ${c.passed ? "pass" : "fail"}`} />
           ))}
         </div>
+      )}
+      {suite.ran && suite.kind === "live" && from.ran_at && (
+        <p className="suite-from">
+          Last run {stamp(from.ran_at)} UTC on <code>{from.model}</code>
+          {from.git_sha ? (
+            <>
+              {" "}
+              at commit <code>{from.git_sha}</code>
+            </>
+          ) : null}
+          . This suite calls the real model and costs a few cents, so it is run on demand, not on every commit: the result shown is the latest run, and it is dropped from this page as soon as any case is changed. One run is one sample. <a href="#live-use">What it took to get here</a> is below.
+        </p>
       )}
       {!suite.ran && (
         <div className="suite-note">
@@ -111,6 +130,128 @@ function SuiteSection({ suite }: { suite: Suite }) {
   );
 }
 
+function LiveUse() {
+  const byLayer = (["code", "prompt", "page"] as const).map((layer) => ({ layer, items: findings.filter((f) => f.layer === layer) }));
+  return (
+    <section className="suite" id="live-use">
+      <header className="suite-head">
+        <div>
+          <p className="eyebrow">After the suites passed</p>
+          <h2>What live use found</h2>
+          <p>
+            Every case above passed before launch. Then the deployed agent was used by hand: {liveUse.messages} messages in {liveUse.sessions} sessions over {liveUse.minutes} minutes on {liveUse.date}, {liveUse.searches} of them with a web search, {liveUse.costUSD.toFixed(2)} dollars in all. Each reply that was wrong was written down, traced to its cause in the stored trace, and fixed. Where a rule can check the fix, it became a test or a live case, so it cannot come back unnoticed. No suite had caught any of them.
+          </p>
+        </div>
+        <div className="score score-good">
+          <span className="score-num">{findings.length}</span>
+          <span className="score-label">findings, each with its fix</span>
+        </div>
+      </header>
+
+      <ul className="layer-key">
+        {byLayer.map(({ layer, items }) => (
+          <li key={layer}>
+            <span className={`tag tag-${layer}`}>
+              {items.length} {LAYER[layer].label}
+            </span>
+            <span>{LAYER[layer].what}</span>
+          </li>
+        ))}
+      </ul>
+
+      <ol className="notes">
+        {findings.map((f, i) => (
+          <li key={f.id} className="note" id={`finding-${f.id}`}>
+            <header className="note-head">
+              <span className="note-n">{String(i + 1).padStart(2, "0")}</span>
+              <h3>{f.title}</h3>
+              <span className={`tag tag-${f.layer}`}>{LAYER[f.layer].label}</span>
+            </header>
+            <dl className="note-body">
+              <div>
+                <dt>Asked</dt>
+                <dd className="note-quote">{f.asked}</dd>
+              </div>
+              <div>
+                <dt>Came back</dt>
+                <dd>{f.got}</dd>
+              </div>
+              <div>
+                <dt>Cause</dt>
+                <dd>{f.cause}</dd>
+              </div>
+              <div>
+                <dt>Fix</dt>
+                <dd>{f.fix}</dd>
+              </div>
+              <div>
+                <dt>Checked by</dt>
+                <dd>
+                  {f.checkedBy.length > 0 ? (
+                    <ul className="note-checks">
+                      {f.checkedBy.map((c) => (
+                        <li key={c}>
+                          <code>{c}</code>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    !f.caveat && <span className="note-none">Seen fixed on the live site. No automated check.</span>
+                  )}
+                  {f.caveat && <p className="note-caveat">{f.caveat}</p>}
+                </dd>
+              </div>
+            </dl>
+          </li>
+        ))}
+      </ol>
+
+      <div className="note-sub">
+        <h3>The live suite was wrong twice before the agent was</h3>
+        <p>
+          The first two runs of the live suite each scored 14 of 15. Both times the agent had done the task and the check had named one way of doing it. The agent's code was the same in all three runs; only the checks changed. A live check has to test the outcome, not one route to it.
+        </p>
+        <div className="table-scroll">
+          <table className="table evals-table">
+            <thead>
+              <tr>
+                <th scope="col">Run</th>
+                <th scope="col">Score</th>
+                <th scope="col">What the failure turned out to be</th>
+              </tr>
+            </thead>
+            <tbody>
+              {liveRuns.map((r) => (
+                <tr key={r.n}>
+                  <td>{r.n}</td>
+                  <td>
+                    <span className={`verdict ${r.failed ? "verdict-fail" : "verdict-pass"}`}>{r.score}</span>
+                    {r.failed && (
+                      <span className="case-prompt">
+                        <code>{r.failed}</code>
+                      </span>
+                    )}
+                  </td>
+                  <td>{r.verdict}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="note-sub">
+        <h3>Still imperfect</h3>
+        <ul className="plain-list">
+          {stillImperfect.map((s) => (
+            <li key={s}>{s}</li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 export default function EvalsPage() {
   const generated = new Date(report.generated_at);
   return (
@@ -119,11 +260,11 @@ export default function EvalsPage() {
         <p className="eyebrow">Evidence</p>
         <h1>Evals</h1>
         <p>
-          Every safety claim on this site has a test with its name on it. There are three layers, from cheapest and most certain to most realistic. The first two run on every commit and fail the build if any case fails.
+          Every safety claim on this site has a test with its name on it. There are three layers, from cheapest and most certain to most realistic. The first two run on every commit and fail the build if any case fails. Below them is the part no suite can produce: what real use of the deployed agent found.
         </p>
         <p className="page-meta">
           Report generated {generated.toISOString().slice(0, 16).replace("T", " ")} UTC
-          {"git_sha" in report && report.git_sha ? ` at commit ${report.git_sha}` : ""} by <code>go run ./cmd/evals</code>. This page is built from that file; nothing here is typed by hand.
+          {"git_sha" in report && report.git_sha ? ` at commit ${report.git_sha}` : ""} by <code>go run ./cmd/evals</code>. The three suites on this page are built from that file; nothing in them is typed by hand.
         </p>
       </div>
 
@@ -136,11 +277,19 @@ export default function EvalsPage() {
             <span className="layer-score">{s.ran ? `${s.passed}/${s.total} passed` : `${s.total} cases, run on demand`}</span>
           </a>
         ))}
+        <a href="#live-use" className="layer">
+          <span className="layer-n">{report.suites.length + 1}</span>
+          <span className="layer-name">Live use</span>
+          <span className="layer-what">What real conversations found after every suite had passed.</span>
+          <span className="layer-score">{findings.length} findings, each with its fix</span>
+        </a>
       </div>
 
       {report.suites.map((s) => (
         <SuiteSection key={s.name} suite={s} />
       ))}
+
+      <LiveUse />
 
       <section className="suite" id="baseline">
         <header className="suite-head">

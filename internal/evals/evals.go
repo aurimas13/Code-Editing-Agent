@@ -18,6 +18,8 @@ package evals
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -134,6 +136,17 @@ type SuiteResult struct {
 	Failed      int          `json:"failed"`
 	Total       int          `json:"total"`
 	Cases       []CaseResult `json:"cases"`
+
+	// Where a live result came from. A live run costs money, so it happens
+	// on demand and its result outlives the commit it ran at: a later run
+	// without -live keeps it (see KeepLive) instead of erasing it, and these
+	// fields say when, on which model and at which commit it was produced.
+	RanAt  *time.Time `json:"ran_at,omitempty"`
+	Model  string     `json:"model,omitempty"`
+	GitSHA string     `json:"git_sha,omitempty"`
+	// CasesHash identifies the case definitions the result is for. A kept
+	// result is dropped as soon as a case is added, removed or reworded.
+	CasesHash string `json:"cases_hash,omitempty"`
 }
 
 // CaseResult is the outcome of one case.
@@ -197,8 +210,13 @@ func Run(ctx context.Context, suites []Suite, opts Options) Report {
 	for _, s := range suites {
 		sr := SuiteResult{Name: s.Name, Description: s.Description, Kind: s.Kind, Total: len(s.Cases)}
 		sr.Ran = s.Kind != "live" || opts.Live != nil
-		if s.Kind == "live" && sr.Ran {
-			report.Model = opts.LiveModel
+		if s.Kind == "live" {
+			sr.CasesHash = casesHash(s.Cases)
+			if sr.Ran {
+				report.Model = opts.LiveModel
+				at := report.GeneratedAt
+				sr.Model, sr.RanAt = opts.LiveModel, &at
+			}
 		}
 		for _, c := range s.Cases {
 			cr := CaseResult{ID: c.ID, Category: c.Category, Why: c.Why, Prompt: c.Prompt, Ran: sr.Ran}
@@ -227,6 +245,64 @@ func Run(ctx context.Context, suites []Suite, opts Options) Report {
 		report.Suites = append(report.Suites, sr)
 	}
 	return report
+}
+
+// KeepLive fills in live suites this run skipped with the result of the last
+// run that did not skip them, as long as the cases are the same ones. Without
+// it, the free run that every commit makes would wipe the live result off the
+// website. It returns the names of the suites it kept.
+func (r *Report) KeepLive(prev Report) []string {
+	var kept []string
+	for i, cur := range r.Suites {
+		if cur.Kind != "live" || cur.Ran {
+			continue
+		}
+		for _, old := range prev.Suites {
+			if old.Name != cur.Name || old.Kind != "live" || !old.Ran || !sameCases(cur, old) {
+				continue
+			}
+			old.Description, old.CasesHash = cur.Description, cur.CasesHash
+			if old.RanAt == nil { // a report written before suites carried their own date
+				at := prev.GeneratedAt
+				old.RanAt = &at
+			}
+			if old.Model == "" {
+				old.Model = prev.Model
+			}
+			if old.GitSHA == "" {
+				old.GitSHA = prev.GitSHA
+			}
+			r.Suites[i] = old
+			kept = append(kept, old.Name)
+			break
+		}
+	}
+	return kept
+}
+
+func sameCases(cur, old SuiteResult) bool {
+	if old.CasesHash != "" {
+		return old.CasesHash == cur.CasesHash
+	}
+	// Older reports have no hash; fall back to the same cases in the same order.
+	if len(cur.Cases) != len(old.Cases) {
+		return false
+	}
+	for i := range cur.Cases {
+		if cur.Cases[i].ID != old.Cases[i].ID || cur.Cases[i].Prompt != old.Cases[i].Prompt {
+			return false
+		}
+	}
+	return true
+}
+
+func casesHash(cases []Case) string {
+	raw, err := json.Marshal(cases)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:8])
 }
 
 // Failed reports whether any case that ran did not pass.

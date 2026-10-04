@@ -27,6 +27,13 @@ make evals-live       # all three; needs ANTHROPIC_API_KEY
 go test ./internal/evals/   # layers 1 and 2 as a test
 ```
 
+`make evals` runs on every commit and rewrites the report. It keeps the
+result of the last live run in it, with the date, model and commit that
+produced it (`ran_at`, `model`, `git_sha` on the suite), so a free run does
+not wipe the live result off the website. The kept result is dropped as soon
+as any live case is added, removed or reworded: it no longer describes the
+suite, and the page goes back to "not run" until someone runs it again.
+
 ## Adding a case
 
 Cases are JSON; no Go is needed. Every case has an `id`, a `category`, and a

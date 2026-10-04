@@ -47,7 +47,13 @@ func main() {
 	report := evals.Run(context.Background(), suites, opts)
 	if sha, err := exec.Command("git", "rev-parse", "--short", "HEAD").Output(); err == nil {
 		report.GitSHA = strings.TrimSpace(string(sha))
+		for i := range report.Suites {
+			if report.Suites[i].Kind == "live" && report.Suites[i].Ran {
+				report.Suites[i].GitSHA = report.GitSHA
+			}
+		}
 	}
+	failed := report.Failed() // judged on what ran now, before any older result is kept
 
 	for _, s := range report.Suites {
 		if !s.Ran {
@@ -63,6 +69,32 @@ func main() {
 			fmt.Printf("  %s  %-40s %s\n", mark, c.ID, c.Category)
 			for _, f := range c.Failures {
 				fmt.Printf("        - %s\n", f)
+			}
+		}
+	}
+
+	// Keep a history of runs when a database is configured.
+	if url, key := os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SECRET_KEY"); url != "" && key != "" {
+		st := store.NewSupabase(url, key)
+		for _, s := range report.Suites {
+			if !s.Ran {
+				continue
+			}
+			detail, _ := json.Marshal(s)
+			run := store.EvalRun{Suite: s.Name, Model: report.Model, GitSHA: report.GitSHA,
+				Passed: s.Passed, Failed: s.Failed, Total: s.Total, Report: detail}
+			if err := st.SaveEvalRun(context.Background(), run); err != nil {
+				fmt.Fprintln(os.Stderr, "warning: could not save eval run:", err)
+			}
+		}
+	}
+
+	// A run without -live must not erase the last live result from the report.
+	if prev, err := os.ReadFile(*out); err == nil {
+		var last evals.Report
+		if json.Unmarshal(prev, &last) == nil {
+			for _, name := range report.KeepLive(last) {
+				fmt.Printf("\n%s: kept the result of the last live run\n", name)
 			}
 		}
 	}
@@ -85,23 +117,7 @@ func main() {
 		fmt.Println("\nwrote", p)
 	}
 
-	// Keep a history of runs when a database is configured.
-	if url, key := os.Getenv("SUPABASE_URL"), os.Getenv("SUPABASE_SECRET_KEY"); url != "" && key != "" {
-		st := store.NewSupabase(url, key)
-		for _, s := range report.Suites {
-			if !s.Ran {
-				continue
-			}
-			detail, _ := json.Marshal(s)
-			run := store.EvalRun{Suite: s.Name, Model: report.Model, GitSHA: report.GitSHA,
-				Passed: s.Passed, Failed: s.Failed, Total: s.Total, Report: detail}
-			if err := st.SaveEvalRun(context.Background(), run); err != nil {
-				fmt.Fprintln(os.Stderr, "warning: could not save eval run:", err)
-			}
-		}
-	}
-
-	if report.Failed() {
+	if failed {
 		os.Exit(1)
 	}
 }

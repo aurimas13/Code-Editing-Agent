@@ -2457,6 +2457,142 @@ figcaption {
   max-width: 72ch;
   color: var(--ink-2);
 }
+.suite-from {
+  max-width: 76ch;
+  color: var(--ink-2);
+}
+
+/* Live use: findings from real conversations, on the Evals page. */
+.tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.tag-code {
+  background: var(--leaf-soft);
+  color: var(--leaf-ink);
+}
+.tag-prompt {
+  background: var(--sun-soft);
+  color: var(--sun-ink);
+}
+.tag-page {
+  background: var(--you-soft);
+  color: var(--you-ink);
+}
+.layer-key {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+  color: var(--ink-2);
+  font-size: 0.92rem;
+}
+.layer-key li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: baseline;
+}
+.notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 14px;
+}
+.note {
+  border: 1.5px solid var(--line-2);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 16px 18px;
+  display: grid;
+  gap: 12px;
+  scroll-margin-top: calc(var(--header-h) + 16px);
+}
+.note-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: baseline;
+}
+.note-head h3 {
+  flex: 1 1 16ch;
+  min-width: 0;
+}
+.note-n {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--leaf-ink);
+}
+.note-body {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.note-body > div {
+  display: grid;
+  grid-template-columns: 7.5em minmax(0, 1fr);
+  gap: 4px 14px;
+}
+.note-body dt {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding-top: 3px;
+}
+.note-body dd {
+  margin: 0;
+  max-width: 78ch;
+  overflow-wrap: anywhere;
+}
+.note-quote {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+.note-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.note-checks code {
+  font-size: 0.8rem;
+}
+.note-caveat,
+.note-none {
+  color: var(--ink-2);
+  font-size: 0.92rem;
+}
+.note-checks + .note-caveat {
+  margin-top: 6px;
+}
+.note-sub {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+}
+.note-sub > p {
+  max-width: 76ch;
+  color: var(--ink-2);
+}
+@media (max-width: 560px) {
+  .note-body > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .evals-table td:first-child {
   min-width: 0;
   width: 5.5em;
