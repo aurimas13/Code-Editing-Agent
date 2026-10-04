@@ -139,7 +139,7 @@ function LiveUse() {
           <p className="eyebrow">After the suites passed</p>
           <h2>What live use found</h2>
           <p>
-            Every case above passed before launch. Then the deployed agent was used by hand: {liveUse.messages} messages in {liveUse.sessions} sessions over {liveUse.minutes} minutes on {liveUse.date}, {liveUse.searches} of them with a web search, {liveUse.costUSD.toFixed(2)} dollars in all. Each reply that was wrong was written down, traced to its cause in the stored trace, and fixed. Where a rule can check the fix, it became a test or a live case, so it cannot come back unnoticed. No suite had caught any of them.
+            Every case above passed before launch. Then the deployed agent was used by hand: {liveUse.messages} messages in {liveUse.sessions} sessions over {liveUse.minutes} minutes on {liveUse.date}, with {liveUse.searches} web searches, for {Math.round(liveUse.costUSD * 100)} cents in all. Each reply that was wrong was written down, traced to its cause in the stored trace, and fixed. Where a rule can check the fix, it became a test or a live case, so it cannot come back unnoticed. No suite had caught any of them.
           </p>
         </div>
         <div className="score score-good">
