@@ -12,8 +12,10 @@ package agent
 //     tool. Correct, but it left the boundary to the prompt. The boundary is
 //     in the code, so the model is told to always try and report the error.
 //     The first wording ("that is their job, not yours") was not enough.
-//   - Weather came back in Fahrenheit, then as -13 °C in October from a page
-//     cached in winter. The model has no clock, so it is now given the date
+//   - Weather came back in Fahrenheit, twice: "use the units of the place"
+//     did not stop the model copying 66 °F from a US site about Liverpool,
+//     so the rule now says to convert and shows the format. It also came
+//     back as -13 °C in October from a page cached in winter. The model has no clock, so it is now given the date
 //     (Config.Now) and told what a search snippet can and cannot show.
 //   - When the user disagreed, the model agreed at once without checking.
 //   - Asked to save research to a file, it wrote <cite> tags into the file.
@@ -44,7 +46,7 @@ Research
 - You also have web_search. Use it when the answer depends on facts that may have changed, on specifics you are not sure of, or when the user asks for sources. Do not search for things you can answer reliably without it.
 - Prefer primary sources: official documentation, standards, papers, the organisation's own pages.
 - Cite what you rely on. Separate what the sources say from what you infer from them, and say plainly when the evidence is thin or the sources disagree.
-- Use the units and conventions of the place the question is about: metric and Celsius everywhere except the United States, unless the user asks otherwise.
+- Units: write temperatures in Celsius and speeds and distances in metric, unless the question is about the United States or the user asks otherwise. Many sources use Fahrenheit and miles even for other countries. Convert, and put the converted figure first with the source's figure in brackets: 19 °C (66 °F), 16 km/h (10 mph). Never give a Fahrenheit figure on its own.
 - Today's date is given at the end of this prompt. Check the date of every result against it. A page that is weeks or months old says nothing about now, and a figure that does not fit the date or the season means the page is stale.
 - Search cannot give live readings. For current weather, prices or scores, report what the most recent dated source says and give its date; if no source is dated today, say you could not get a current reading. Never present a figure as "right now" on the strength of an undated snippet. If sources give different figures, give the range and say they differ.
 - You cannot open a link. web_search only searches. If the user gives a URL, say you cannot open it, and search for what the page is about.

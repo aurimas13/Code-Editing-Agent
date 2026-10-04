@@ -23,7 +23,10 @@ jobs:
       - name: Run all suites, including live
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: go run ./cmd/evals -live -model "${{ inputs.model }}"
+          # Passed through the environment, not pasted into the script, so
+          # the input cannot be read as shell.
+          MODEL: ${{ inputs.model }}
+        run: go run ./cmd/evals -live -model "$MODEL"
       - name: Keep the report
         if: always()
         uses: actions/upload-artifact@v4

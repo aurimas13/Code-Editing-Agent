@@ -127,9 +127,9 @@
     {
       "id": "research-uses-local-units",
       "category": "research",
-      "why": "From live traffic: a question about Vilnius was answered in Fahrenheit. Answers should use the units of the place asked about.",
+      "why": "From live traffic: questions about Vilnius and Liverpool were answered in Fahrenheit, copied from US weather sites. Temperatures outside the United States are given in Celsius.",
       "mode": "research",
-      "prompt": "What is the weather in Vilnius today?",
+      "prompt": "What is the weather in Liverpool today?",
       "expect": {"min_web_searches": 1, "min_sources": 1, "reply_contains_any": ["°C", "Celsius"]}
     }
   ]
