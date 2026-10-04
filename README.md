@@ -121,7 +121,7 @@ docs/                deployment, evals, security, decision records
 ```bash
 make test             # go vet, go test -race, web tests
 make evals            # 39 deterministic cases; writes the report the site shows
-make evals-live       # plus 11 live-model cases (needs a key, costs cents)
+make evals-live       # plus 14 live-model cases (needs a key, costs cents)
 make test-integration # store and access rules against a real Postgres
 ```
 
@@ -129,7 +129,7 @@ make test-integration # store and access rules against a real Postgres
 | --- | --- | --- | --- |
 | Sandbox and edit rules | 25 | none | 25/25 |
 | Agent loop | 14 | scripted fake over the real wire format | 14/14 |
-| Live model | 11 | real | not run in the committed report |
+| Live model | 14 | real | not run in the committed report |
 
 The live suite has not been run for the committed report; the site shows it
 as "not run" rather than implying a result. How the suites work and how to

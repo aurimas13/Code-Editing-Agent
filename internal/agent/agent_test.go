@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -214,6 +215,77 @@ func TestSecretInToolInputIsHiddenFromEvents(t *testing.T) {
 	// The tool itself still received what the model sent.
 	if got, _ := fs.ReadFile("k.txt"); string(got) != secret {
 		t.Errorf("tool input was altered: %q", got)
+	}
+}
+
+// A cited answer arrives as many small text blocks, one per cited span, cut
+// in the middle of sentences. Shown one block per paragraph it reads as broken
+// lines, which is what the first live research answer looked like. The blocks
+// are one passage: joined for the reader and the stored answer, and still
+// separate in the conversation, where the citations need them to be.
+func TestCitedTextBlocksAreJoinedIntoOnePassage(t *testing.T) {
+	cite := []fakellm.Citation{{URL: "https://example.com/weather", Title: "Weather", CitedText: "10 C"}}
+	answer := fakellm.Response{Blocks: []fakellm.Block{
+		{Type: "text", Text: "Let me check."},
+		{Type: "server_tool_use", ID: "srvtoolu_1", Name: "web_search", Input: json.RawMessage(`{"query":"weather"}`)},
+		{Type: "web_search_tool_result", ToolUseID: "srvtoolu_1", Results: []fakellm.SearchResult{
+			{URL: "https://example.com/weather", Title: "Weather"},
+		}},
+		{Type: "text", Text: "It is currently "},
+		{Type: "text", Text: "10 °C and cloudy", Citations: cite},
+		{Type: "text", Text: ", with "},
+		{Type: "text", Text: "a light breeze", Citations: cite},
+		{Type: "text", Text: "."},
+	}}
+	ag, fake := newAgent(t, Config{WebSearch: true}, answer, fakellm.Text("Yes."))
+	ctx, fs := context.Background(), memfs(t, nil)
+
+	var passages []string
+	conv, res, err := ag.Turn(ctx, nil, fs, "Weather?", func(ev Event) {
+		if ev.Type == EventText {
+			passages = append(passages, ev.Text)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"Let me check.", "It is currently 10 °C and cloudy, with a light breeze."}
+	if !slices.Equal(passages, want) {
+		t.Errorf("passages:\n got %q\nwant %q", passages, want)
+	}
+	if res.Text != strings.Join(want, "\n\n") {
+		t.Errorf("stored answer = %q", res.Text)
+	}
+	if len(res.Sources) != 1 || !res.Sources[0].Cited {
+		t.Errorf("sources = %+v", res.Sources)
+	}
+
+	// The conversation keeps the blocks as the API sent them.
+	if _, _, err := ag.Turn(ctx, conv, fs, "Sure?", nil); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(fake.Requests()[1].Messages[1].Content); n != 8 {
+		t.Errorf("assistant message resent with %d blocks, want 8", n)
+	}
+}
+
+// Redaction runs on the joined passage, so a credential that straddles two
+// blocks is still caught.
+func TestSecretSplitAcrossTextBlocksIsRedacted(t *testing.T) {
+	key := "sk-ant-api03-" + strings.Repeat("Abc123", 8)
+	ag, _ := newAgent(t, Config{}, fakellm.Response{Blocks: []fakellm.Block{
+		{Type: "text", Text: "The key is " + key[:20]},
+		{Type: "text", Text: key[20:] + " as found."},
+	}})
+	_, res, err := ag.Turn(context.Background(), nil, memfs(t, nil), "Show it", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(res.Text, key[20:]) || strings.Contains(res.Text, "Abc123Abc123") {
+		t.Errorf("credential survived in %q", res.Text)
+	}
+	if len(res.Guardrails) == 0 || res.Guardrails[0].Kind != "secret_redacted" {
+		t.Errorf("guardrails = %+v", res.Guardrails)
 	}
 }
 

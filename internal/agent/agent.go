@@ -167,18 +167,34 @@ func (a *Agent) Turn(
 
 		conv = append(conv, redactedParam(msg))
 
+		// The API splits a cited sentence into several text blocks, one per
+		// cited span, so neighbouring text blocks are one piece of prose.
+		// They are joined before being redacted, shown and stored; a tool
+		// call between two blocks is what separates one passage from the next.
+		var passage strings.Builder
+		flushText := func() {
+			if passage.Len() == 0 {
+				return
+			}
+			text, kinds := guardrails.Redact(passage.String())
+			passage.Reset()
+			if len(kinds) > 0 {
+				guard(round, "secret_redacted", "in reply: "+strings.Join(kinds, ", "))
+			}
+			if strings.TrimSpace(text) != "" {
+				texts = append(texts, text)
+				emit(Event{Type: EventText, Round: round, Text: text})
+			}
+		}
+
 		var toolResults []anthropic.ContentBlockParamUnion
 		for _, block := range msg.Content {
+			if block.Type != "text" {
+				flushText()
+			}
 			switch block.Type {
 			case "text":
-				text, kinds := guardrails.Redact(block.Text)
-				if len(kinds) > 0 {
-					guard(round, "secret_redacted", "in reply: "+strings.Join(kinds, ", "))
-				}
-				if strings.TrimSpace(text) != "" {
-					texts = append(texts, text)
-					emit(Event{Type: EventText, Round: round, Text: text})
-				}
+				passage.WriteString(block.Text)
 				for _, c := range block.Citations {
 					if c.URL != "" {
 						res.Sources = addSource(res.Sources, Source{URL: c.URL, Title: c.Title, Cited: true})
@@ -207,6 +223,7 @@ func (a *Agent) Turn(
 				}
 			}
 		}
+		flushText()
 
 		if msg.StopReason == anthropic.StopReasonMaxTokens {
 			guard(round, "output_truncated", fmt.Sprintf("reply hit the %d-token output limit", a.cfg.MaxTokens))
