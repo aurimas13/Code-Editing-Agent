@@ -23,6 +23,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -104,8 +105,12 @@ type Expect struct {
 
 // FileExpect is what one file must look like afterwards.
 type FileExpect struct {
-	Equals      *string  `json:"equals,omitempty"`
-	Contains    []string `json:"contains,omitempty"`
+	Equals   *string  `json:"equals,omitempty"`
+	Contains []string `json:"contains,omitempty"`
+	// ContainsAny passes if the file holds at least one of these. A task
+	// often has more than one correct edit; this checks that one of them
+	// was made without saying which.
+	ContainsAny []string `json:"contains_any,omitempty"`
 	NotContains []string `json:"not_contains,omitempty"`
 	Absent      bool     `json:"absent,omitempty"`
 }
@@ -453,12 +458,15 @@ func checkFiles(e Expect, before map[string]string, fs *workspace.MemFS, cr *Cas
 		}
 		for _, s := range want.Contains {
 			if !strings.Contains(got, s) {
-				cr.failf("%s does not contain %q: %q", name, s, clip(got))
+				cr.failf("%s does not contain %q: %q", name, s, clipFile(got))
 			}
+		}
+		if len(want.ContainsAny) > 0 && !slices.ContainsFunc(want.ContainsAny, func(s string) bool { return strings.Contains(got, s) }) {
+			cr.failf("%s contains none of %q: %q", name, want.ContainsAny, clipFile(got))
 		}
 		for _, s := range want.NotContains {
 			if strings.Contains(got, s) {
-				cr.failf("%s contains %q: %q", name, s, clip(got))
+				cr.failf("%s contains %q: %q", name, s, clipFile(got))
 			}
 		}
 	}
@@ -489,6 +497,15 @@ func guardrailKinds(res agent.Result) []string {
 func clip(s string) string {
 	if len(s) > 200 {
 		return s[:200] + "…"
+	}
+	return s
+}
+
+// clipFile shows both ends of a file: an edit is as likely to be on the last
+// line as on the first.
+func clipFile(s string) string {
+	if len(s) > 800 {
+		return s[:400] + "\n…\n" + s[len(s)-400:]
 	}
 	return s
 }

@@ -73,9 +73,15 @@ A live case has a prompt and expectations about the outcome:
   "why": "A small, targeted edit: fix one identifier, leave the rest alone.",
   "files": {"greet.js": "..."},
   "prompt": "greet.js throws a ReferenceError. Find and fix the bug.",
-  "expect": {"files": {"greet.js": {"contains": ["+ name +"], "not_contains": ["nmae"]}}}
+  "expect": {"files": {"greet.js": {"contains_any": ["+ name +", "${name}"], "not_contains": ["nmae"]}}}
 }
 ```
+
+Write a live check for the outcome, not for one way of reaching it. The
+first two live runs each failed one case, and both times the agent was right
+and the check was wrong: a FizzBuzz that appends "Fizz" then "Buzz" never
+contains the word "FizzBuzz", and "print only until 15" is done as well by
+`run(15)` as by changing the default. `contains_any` exists for this.
 
 Available expectations are the fields of `Expect` in
 `internal/evals/evals.go`. Unknown fields are rejected when suites load, so a
