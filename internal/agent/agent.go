@@ -264,6 +264,12 @@ func (a *Agent) Turn(
 		break
 	}
 
+	// The turn is over: what later turns need is what was said, not the
+	// pages that were read to say it.
+	if len(conv) > len(history) {
+		compactSearches(conv[len(history):])
+	}
+
 	res.Text = strings.Join(texts, "\n\n")
 	if len(res.Sources) > 0 {
 		emit(Event{Type: EventSources, Round: res.Rounds, Sources: res.Sources})
@@ -377,6 +383,59 @@ func redactedParam(msg *anthropic.Message) anthropic.MessageParam {
 		}
 	}
 	return p
+}
+
+// compactSearches rewrites the assistant messages of a finished turn so they
+// hold the reply and the local tool calls, without the web search blocks.
+//
+// The API bills the whole conversation again on every call. Measured on the
+// live site, each earlier search added about 8,500 input tokens to every
+// later model call: a one-line question that cost 0.3 cents in a fresh
+// session cost 1.8 cents after one search and 3.5 after two, and a session
+// reached its context limit after a handful. The model keeps its own answer,
+// which is what a follow-up question refers to; if it needs the pages again
+// it can search again. Citations go with the results they point into, and neighbouring text
+// blocks are merged, as they are for display.
+func compactSearches(turn []anthropic.MessageParam) {
+	for i := range turn {
+		if turn[i].Role != anthropic.MessageParamRoleAssistant {
+			continue
+		}
+		var kept []anthropic.ContentBlockParamUnion
+		var passage strings.Builder
+		searched, gap := false, false
+		flush := func() {
+			if strings.TrimSpace(passage.String()) != "" {
+				kept = append(kept, anthropic.NewTextBlock(passage.String()))
+			}
+			passage.Reset()
+			gap = false
+		}
+		for _, block := range turn[i].Content {
+			switch {
+			case block.OfServerToolUse != nil || block.OfWebSearchToolResult != nil:
+				searched, gap = true, passage.Len() > 0
+			case block.OfText != nil:
+				if gap {
+					passage.WriteString("\n\n")
+					gap = false
+				}
+				passage.WriteString(block.OfText.Text)
+			default:
+				flush()
+				kept = append(kept, block)
+			}
+		}
+		flush()
+		if !searched {
+			continue // nothing to remove; leave the message exactly as it was
+		}
+		if len(kept) == 0 {
+			// The API rejects an empty assistant message.
+			kept = append(kept, anthropic.NewTextBlock("(Searched the web.)"))
+		}
+		turn[i].Content = kept
+	}
 }
 
 func (a *Agent) toolParams() []anthropic.ToolUnionParam {

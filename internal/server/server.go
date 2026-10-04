@@ -88,6 +88,9 @@ func New(cfg Config, client llm.Client, st store.Store, demo bool, log *slog.Log
 	if demo {
 		cfg.ResearchEnabled = false // the scripted stand-in cannot search
 	}
+	if cfg.ResearchEnabled {
+		code.System += agent.ResearchTabHint
+	}
 
 	s := &Server{
 		cfg:      cfg,

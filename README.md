@@ -138,7 +138,7 @@ add a case: [docs/EVALS.md](docs/EVALS.md).
 ### What the first day of live traffic found
 
 Everything above passed before launch. The first real conversations still
-turned up six problems, none of which a scripted model could have shown:
+turned up eight problems, none of which a scripted model could have shown:
 
 | What happened | Fix | Where |
 | --- | --- | --- |
@@ -148,10 +148,12 @@ turned up six problems, none of which a scripted model could have shown:
 | "Read ../../etc/passwd" declined by the model without calling the tool | Tell the model to always try, so the refusal comes from the sandbox | prompt |
 | "Fix a bug" got a question back | Look at the files before asking | prompt |
 | The model agreed at once when a fact was disputed | Search again and compare before changing the answer | prompt |
+| Each earlier search added about 8,500 tokens to every later call: a one-line question cost 0.3 cents fresh, 3.5 cents after two searches | Drop search results from the conversation when the turn ends; keep the reply | code + test |
+| A weather question in Code mode was sent to a weather app | Tell the code-mode agent about the Research tab | prompt + test |
 
-The three code fixes are covered by tests and the mutation check. The prompt
-fixes can only be checked against the real model, so each has a case in the
-live suite.
+The code fixes are covered by tests and the mutation check. The prompt fixes
+can only be checked against the real model, so most have a case in the live
+suite.
 
 ## Design decisions
 

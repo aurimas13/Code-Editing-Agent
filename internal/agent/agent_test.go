@@ -303,12 +303,14 @@ func TestCitedTextBlocksAreJoinedIntoOnePassage(t *testing.T) {
 		t.Errorf("sources = %+v", res.Sources)
 	}
 
-	// The conversation keeps the blocks as the API sent them.
+	// Once the turn is over the conversation holds the same passages, as
+	// one plain text block: no search results and no citations into them.
 	if _, _, err := ag.Turn(ctx, conv, fs, "Sure?", nil); err != nil {
 		t.Fatal(err)
 	}
-	if n := len(fake.Requests()[1].Messages[1].Content); n != 8 {
-		t.Errorf("assistant message resent with %d blocks, want 8", n)
+	resent := fake.Requests()[1].Messages[1].Content
+	if len(resent) != 1 || resent[0].Text != strings.Join(want, "\n\n") {
+		t.Errorf("assistant message resent as %+v", resent)
 	}
 }
 
@@ -333,9 +335,10 @@ func TestSecretSplitAcrossTextBlocksIsRedacted(t *testing.T) {
 }
 
 // Web search runs on the provider's side, so its blocks arrive inside the
-// assistant message. They have to be counted, turned into sources, and sent
-// back intact on the next turn, or the API rejects the conversation.
-func TestWebSearchBlocksAreAccountedAndRoundTrip(t *testing.T) {
+// assistant message. They have to be counted and turned into sources. Once
+// the turn is over they are dropped from the conversation: each search left
+// in adds about 8,500 tokens to every later call.
+func TestWebSearchBlocksAreAccountedThenDroppedFromHistory(t *testing.T) {
 	searching := fakellm.Response{Blocks: []fakellm.Block{
 		{Type: "server_tool_use", ID: "srvtoolu_1", Name: "web_search", Input: json.RawMessage(`{"query":"latest go release"}`)},
 		{Type: "web_search_tool_result", ToolUseID: "srvtoolu_1", Results: []fakellm.SearchResult{
@@ -371,21 +374,70 @@ func TestWebSearchBlocksAreAccountedAndRoundTrip(t *testing.T) {
 		t.Errorf("a server-side search must not be run as a local tool: %+v", res)
 	}
 
-	// Second turn: the search blocks from the first reply go back unchanged.
+	// Second turn: the reply goes back, the pages it was written from do not.
 	if _, _, err := ag.Turn(ctx, conv, fs, "Are you sure?", nil); err != nil {
 		t.Fatal(err)
 	}
 	second := fake.Requests()[1]
-	var types []string
-	for _, b := range second.Messages[1].Content {
-		types = append(types, b.Type)
+	raw, _ := json.Marshal(second.Messages)
+	if len(second.Messages[1].Content) != 1 || second.Messages[1].Content[0].Text != "See the release history." {
+		t.Errorf("assistant message resent as %+v", second.Messages[1].Content)
 	}
-	if strings.Join(types, " ") != "server_tool_use web_search_tool_result text" {
-		t.Errorf("assistant message resent as %v", types)
+	for _, gone := range []string{"web_search_tool_result", "server_tool_use", "ZmFrZQ==", "citations"} {
+		if strings.Contains(string(raw), gone) {
+			t.Errorf("%s was sent again on the next turn: %s", gone, raw)
+		}
 	}
-	raw, _ := json.Marshal(second.Messages[1].Content[1])
-	if !strings.Contains(string(raw), "ZmFrZQ==") {
-		t.Errorf("the search result's encrypted content was dropped: %s", raw)
+}
+
+// Inside a turn nothing may be dropped. When the model searches and then
+// calls a local tool, the next call of the same turn must carry the search
+// blocks exactly as they arrived, or the API rejects the conversation. Only
+// when the turn has ended is the message reduced to its text and tool calls,
+// and each tool call must still be followed by its result.
+func TestSearchBlocksStayIntactUntilTheTurnEnds(t *testing.T) {
+	searchThenWrite := fakellm.Response{Blocks: []fakellm.Block{
+		{Type: "server_tool_use", ID: "srvtoolu_1", Name: "web_search", Input: json.RawMessage(`{"query":"mcp"}`)},
+		{Type: "web_search_tool_result", ToolUseID: "srvtoolu_1", Results: []fakellm.SearchResult{
+			{URL: "https://modelcontextprotocol.io", Title: "MCP"},
+		}},
+		{Type: "text", Text: "Saving a summary."},
+		{Type: "tool_use", ID: "t1", Name: "edit_file", Input: json.RawMessage(`{"path":"mcp.md","old_str":"","new_str":"An open protocol.\n"}`)},
+	}}
+	ag, fake := newAgent(t, Config{WebSearch: true}, searchThenWrite, fakellm.Text("Saved."), fakellm.Text("Yes."))
+	ctx, fs := context.Background(), memfs(t, nil)
+	conv, _, err := ag.Turn(ctx, nil, fs, "Research MCP and save it", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	types := func(blocks []fakellm.ContentBlock) string {
+		var out []string
+		for _, b := range blocks {
+			out = append(out, b.Type)
+		}
+		return strings.Join(out, " ")
+	}
+
+	sameTurn := fake.Requests()[1]
+	if got := types(sameTurn.Messages[1].Content); got != "server_tool_use web_search_tool_result text tool_use" {
+		t.Errorf("round 2 of the same turn got %q", got)
+	}
+	if raw, _ := json.Marshal(sameTurn.Messages[1].Content[1]); !strings.Contains(string(raw), "ZmFrZQ==") {
+		t.Errorf("the search result's encrypted content was dropped inside the turn: %s", raw)
+	}
+
+	if _, _, err := ag.Turn(ctx, conv, fs, "Did it save?", nil); err != nil {
+		t.Fatal(err)
+	}
+	nextTurn := fake.Requests()[2]
+	if got := types(nextTurn.Messages[1].Content); got != "text tool_use" {
+		t.Errorf("after the turn the assistant message is %q, want text tool_use", got)
+	}
+	if got := types(nextTurn.Messages[2].Content); got != "tool_result" {
+		t.Errorf("the tool call lost its result: %q", got)
+	}
+	if got := types(nextTurn.Messages[3].Content); got != "text" {
+		t.Errorf("the closing reply was changed: %q", got)
 	}
 }
 

@@ -32,6 +32,8 @@ MUTATIONS = [
      "if clean, changed := stripCitationTags(input); changed {",
      "if clean, changed := stripCitationTags(input); changed && false {",
      "./internal/agent/"),
+    ("search results kept in the conversation", "internal/agent/agent.go",
+     "if len(conv) > len(history) {", "if len(conv) > len(history) && false {", "./internal/agent/"),
     ("round limit backstop removed", "internal/agent/agent.go",
      "\t\t\tif round >= a.cfg.MaxRounds {\n\t\t\t\tbreak\n\t\t\t}\n",
      "\t\t\tif round > 9 {\n\t\t\t\tbreak\n\t\t\t}\n", "./internal/evals/ ./internal/agent/"),

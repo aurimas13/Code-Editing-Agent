@@ -407,6 +407,22 @@ func TestResearchModeGating(t *testing.T) {
 	}
 }
 
+// A visitor in Code mode who asks something that needs the web should be
+// pointed at the Research tab, so the code-mode prompt has to mention it,
+// and only where that tab works.
+func TestCodeModeKnowsAboutTheResearchTab(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		h := newHarness(t, func(c *Config) { c.ResearchEnabled = enabled })
+		if status, _, body := h.send(h.newSession(), "code", "What is the weather in Liverpool?"); status != http.StatusOK {
+			t.Fatalf("status %d: %s", status, body)
+		}
+		system := string(h.fake.Requests()[0].System)
+		if got := strings.Contains(system, "Research tab"); got != enabled {
+			t.Errorf("research enabled = %v, but the prompt mentions the Research tab = %v", enabled, got)
+		}
+	}
+}
+
 func TestSessionSurvivesRestart(t *testing.T) {
 	h := newHarness(t, nil)
 	s := h.newSession()

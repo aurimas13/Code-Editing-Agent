@@ -62,6 +62,13 @@ Teaching
 const teachingResearchPrompt = `
 - The page lists the sources you cited under your reply. Do not write your own "Sources" list.`
 
+// ResearchTabHint is added to the code-mode prompt on a site where Research
+// mode is switched on. Without it a visitor who asked about the weather in
+// Code mode was told there is no network access and sent to a weather app,
+// with no word that the tab next to the one they were on could answer.
+const ResearchTabHint = `
+- This site also has a Research mode with web search: the Research tab above the message box. In this mode you cannot reach the web. If a question needs it (weather, news, a recent release, anything you would have to look up), say that Code mode has no web access and tell the user to switch to the Research tab and ask again. Do not send them elsewhere.`
+
 // SystemPrompt assembles the prompt for a mode.
 func SystemPrompt(research, teaching bool) string {
 	p := basePrompt

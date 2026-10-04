@@ -42,7 +42,7 @@ func main() {
 
 	write(filepath.Join(out, "guide.json"), map[string]any{"steps": guide.Steps()})
 	write(filepath.Join(out, "agent.json"), map[string]any{
-		"system_prompt_code":     agent.SystemPrompt(false, true),
+		"system_prompt_code":     agent.SystemPrompt(false, true) + agent.ResearchTabHint,
 		"system_prompt_research": agent.SystemPrompt(true, true),
 		"tools":                  toolInfos,
 		"seed_files":             server.SeedFiles(),
